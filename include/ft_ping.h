@@ -11,7 +11,6 @@
 #include <signal.h>
 #include <math.h>
 #include <time.h>
-#include <poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/ip.h>
@@ -40,6 +39,11 @@ typedef struct s_ping_stats {
 typedef struct s_ping {
     int             sockfd;
     bool            verbose;
+    bool            numeric;
+    bool            dontroute;
+    int             waittimeout;
+    int             deadline;
+    int             ttl;
     char            *hostname;
     char            ip_str[INET_ADDRSTRLEN];
     struct sockaddr_in dest_addr;
@@ -59,7 +63,8 @@ int         process_packet(t_ping *ping, const char *buf, ssize_t len,
                            const struct sockaddr_in *from);
 void        print_help(void);
 void        print_stats(t_ping *ping);
-double      compute_rtt_ms(const struct timespec *send_ts);
+double      compute_rtt_ms(const struct timespec *send_ts,
+                           const struct timespec *now);
 void        stats_init(t_ping_stats *stats);
 void        stats_update(t_ping_stats *stats, double rtt_ms);
 void        event_loop(t_ping *ping);

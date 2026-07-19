@@ -17,10 +17,9 @@ int setup_signal_handler(void)
     sa.sa_flags = 0;
 
     if (sigaction(SIGINT, &sa, NULL) < 0)
-    {
-        fprintf(stderr, "ft_ping: sigaction: %s\n", strerror(errno));
-        return -1;
-    }
+        RETURN_ERR(-1, "ft_ping: sigaction: %s\n", strerror(errno));
+    if (sigaction(SIGQUIT, &sa, NULL) < 0)
+        RETURN_ERR(-1, "ft_ping: sigaction: %s\n", strerror(errno));
     return 0;
 }
 
@@ -54,12 +53,6 @@ static int timespec_ge(const struct timespec *a, const struct timespec *b)
         || (a->tv_sec == b->tv_sec && a->tv_nsec >= b->tv_nsec);
 }
 
-static double timespec_diff_ms(const struct timespec *a, const struct timespec *b)
-{
-    return (a->tv_sec - b->tv_sec) * 1000.0
-         + (a->tv_nsec - b->tv_nsec) / 1000000.0;
-}
-
 static void timespec_add_sec(struct timespec *ts, time_t sec)
 {
     ts->tv_sec += sec;
@@ -67,26 +60,29 @@ static void timespec_add_sec(struct timespec *ts, time_t sec)
 
 void event_loop(t_ping *ping)
 {
-    struct pollfd pfd;
     struct timespec next_send;
-    bool first = true;
+    struct timespec deadline_ts;
+    char buf[RECV_BUF_SIZE];
+    struct sockaddr_in from;
+    socklen_t fromlen;
 
-    pfd.fd = ping->sockfd;
-    pfd.events = POLLIN;
+    clock_gettime(CLOCK_MONOTONIC, &next_send);
+    if (ping->deadline > 0)
+    {
+        clock_gettime(CLOCK_MONOTONIC, &deadline_ts);
+        timespec_add_sec(&deadline_ts, ping->deadline);
+    }
+    timespec_add_sec(&next_send, 1);
+    send_echo(ping);
+    ping->sequence++;
 
     while (!g_stop)
     {
-        if (first)
-        {
-            clock_gettime(CLOCK_MONOTONIC, &next_send);
-            timespec_add_sec(&next_send, 1);
-            send_echo(ping);
-            ping->sequence++;
-            first = false;
-        }
-
         struct timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
+
+        if (ping->deadline > 0 && timespec_ge(&now, &deadline_ts))
+            break;
 
         if (timespec_ge(&now, &next_send))
         {
@@ -97,21 +93,26 @@ void event_loop(t_ping *ping)
             continue;
         }
 
-        double timeout_ms = timespec_diff_ms(&next_send, &now);
-        if (timeout_ms < 0)
-            timeout_ms = 0;
-
-        int ret = poll(&pfd, 1, (int)(timeout_ms + 1));
-        if (ret < 0)
+        fromlen = sizeof(from);
+        ssize_t n = recvfrom(ping->sockfd, buf, sizeof(buf), 0,
+                             (struct sockaddr *)&from, &fromlen);
+        if (n >= 0)
         {
-            if (errno == EINTR)
-                continue;
-            fprintf(stderr, "ft_ping: poll: %s\n", strerror(errno));
+            process_packet(ping, buf, n, &from);
+        }
+        else if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            continue;
+        }
+        else if (errno == EINTR)
+        {
+            continue;
+        }
+        else
+        {
+            fprintf(stderr, "ft_ping: recvfrom: %s\n", strerror(errno));
             break;
         }
-
-        if (ret > 0 && (pfd.revents & POLLIN))
-            drain_socket(ping);
     }
 
     drain_socket(ping);

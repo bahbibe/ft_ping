@@ -5,6 +5,9 @@ int create_raw_socket(void)
     int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd < 0)
         RETURN_ERR(-1, "ft_ping: socket: %s\n%s", strerror(errno), "  (try running with sudo or set cap_net_raw+ep)");
+
+    struct timeval tv = {0, 50000};
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     return sockfd;
 }
 
@@ -36,13 +39,11 @@ int send_echo(t_ping *ping)
     return 0;
 }
 
-double compute_rtt_ms(const struct timespec *send_ts)
+double compute_rtt_ms(const struct timespec *send_ts,
+                      const struct timespec *now)
 {
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-
-    double sec = now.tv_sec - send_ts->tv_sec;
-    double nsec = now.tv_nsec - send_ts->tv_nsec;
+    double sec = now->tv_sec - send_ts->tv_sec;
+    double nsec = now->tv_nsec - send_ts->tv_nsec;
     return sec * 1000.0 + nsec / 1000000.0;
 }
 
@@ -69,7 +70,9 @@ int process_packet(t_ping *ping, const char *buf, ssize_t len,
         (const struct icmphdr *)(buf + ip_hdr_len);
     ssize_t icmp_len = len - ip_hdr_len;
 
-    if (icmp->type == ICMP_ECHOREPLY)
+    switch (icmp->type)
+    {
+    case ICMP_ECHOREPLY:
     {
         if (ntohs(icmp->un.echo.id) != ping->pid)
             return -1;
@@ -79,34 +82,35 @@ int process_packet(t_ping *ping, const char *buf, ssize_t len,
         inet_ntop(AF_INET, &from->sin_addr, src_ip, sizeof(src_ip));
 
         if (icmp_len < (ssize_t)(ICMP_HDR_SIZE + TIMESTAMP_SIZE))
-        {
-            fprintf(stderr, "ft_ping: short echo reply (%zd bytes)\n",
-                    icmp_len);
-            return -1;
-        }
+            RETURN_ERR(-1, "ft_ping: short echo reply (%zd bytes)\n",
+                       icmp_len);
 
         const struct timespec *send_ts =
             (const struct timespec *)(buf + ip_hdr_len + ICMP_HDR_SIZE);
-        double rtt_ms = compute_rtt_ms(send_ts);
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        double rtt_ms = compute_rtt_ms(send_ts, &now);
 
         ping->stats.nreceived++;
         stats_update(&ping->stats, rtt_ms);
 
-        printf("%zd bytes from %s: icmp_seq=%u ttl=%d time=%.1f ms\n",
+        printf("%zd bytes from %s: icmp_seq=%u ttl=%d time=%.3f ms\n",
                icmp_len, src_ip, recv_seq, ip->ttl, rtt_ms);
         return 0;
     }
-
-    if (ping->verbose && (icmp->type == ICMP_TIME_EXCEEDED || icmp->type == ICMP_DEST_UNREACH))
+    case ICMP_TIME_EXCEEDED:
+    case ICMP_DEST_UNREACH:
+        if (!ping->verbose)
+            break;
     {
-        if (icmp_len < (ssize_t)(ICMP_HDR_SIZE + 4 + sizeof(struct iphdr) + ICMP_HDR_SIZE))
-            return -1;
-
         const char *err_body = (const char *)(icmp + 1);
         const struct iphdr *orig_ip = (const struct iphdr *)(err_body + 4);
         int orig_ip_hdr_len = (orig_ip->ihl) * 4;
 
         if (orig_ip_hdr_len < 20 || orig_ip_hdr_len > 60)
+            return -1;
+
+        if (icmp_len < (ssize_t)(ICMP_HDR_SIZE + 4 + orig_ip_hdr_len + ICMP_HDR_SIZE))
             return -1;
 
         const struct icmphdr *orig_icmp =
@@ -124,9 +128,10 @@ int process_packet(t_ping *ping, const char *buf, ssize_t len,
         printf("From %s icmp_seq=%u ", router_ip, orig_seq);
         if (icmp->type == ICMP_TIME_EXCEEDED)
             printf("Time to live exceeded\n");
-        else if (icmp->type == ICMP_DEST_UNREACH)
+        else
             printf("Destination Unreachable\n");
         return 0;
+    }
     }
 
     return -1;

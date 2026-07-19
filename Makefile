@@ -1,35 +1,27 @@
 NAME = ft_ping
 CC = cc
-CFLAGS = -Wall -Werror -Wextra -g3 -Iincludes -D_GNU_SOURCE
+CFLAGS = -Wall -Werror -Wextra -g3 -D_GNU_SOURCE -Iinclude -MMD
 LDFLAGS = -lm
 
-SRC_DIR = src
-INC_DIR = include
-
-SRC = $(SRC_DIR)/main.c \
-      $(SRC_DIR)/checksum.c \
-      $(SRC_DIR)/resolve.c \
-      $(SRC_DIR)/packet.c \
-      $(SRC_DIR)/loop.c
+SRC = src/main.c \
+      src/checksum.c \
+      src/resolve.c \
+      src/packet.c \
+      src/loop.c \
+      src/stats.c
 
 OBJ = $(SRC:.c=.o)
-DEP = $(OBJ:.o=.d)
-
-CFLAGS += -I$(INC_DIR) -MMD
 
 all: $(NAME)
-	@echo "Compilation finished successfully."
-	@echo "Run sudo setcap cap_net_raw+ep $(NAME) to allow raw socket usage."
+
 $(NAME): $(OBJ)
-	@$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	@echo "Run 'sudo setcap cap_net_raw+ep $(NAME)' to allow raw socket usage."
 
--include $(DEP)
-
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(INC_DIR)/ft_ping.h
-	$(CC) $(CFLAGS) -c -o $@ $<
+-include $(OBJ:.o=.d)
 
 clean:
-	rm -f $(OBJ) $(DEP)
+	rm -f $(OBJ) $(OBJ:.o=.d)
 
 fclean: clean
 	rm -f $(NAME)
@@ -37,5 +29,3 @@ fclean: clean
 re: fclean all
 
 .PHONY: all clean fclean re
-
-.SILENT: $(SRC_DIR)/%.o
