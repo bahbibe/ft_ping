@@ -28,4 +28,8 @@ fclean: clean
 
 re: fclean all
 
-.PHONY: all clean fclean re
+test-docker: all
+	docker build -t ft_ping-test -f Dockerfile.test .
+	docker run --rm --cap-add=NET_RAW ft_ping-test
+
+.PHONY: all clean fclean re test-docker

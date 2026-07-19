@@ -60,37 +60,45 @@ static void timespec_add_sec(struct timespec *ts, time_t sec)
 
 void event_loop(t_ping *ping)
 {
-    struct timespec next_send;
+    struct timespec start;
     struct timespec deadline_ts;
     char buf[RECV_BUF_SIZE];
     struct sockaddr_in from;
     socklen_t fromlen;
+    int deadline_hit = 0;
 
-    clock_gettime(CLOCK_MONOTONIC, &next_send);
+    clock_gettime(CLOCK_MONOTONIC, &start);
     if (ping->deadline > 0)
     {
-        clock_gettime(CLOCK_MONOTONIC, &deadline_ts);
+        deadline_ts = start;
         timespec_add_sec(&deadline_ts, ping->deadline);
     }
-    timespec_add_sec(&next_send, 1);
     send_echo(ping);
     ping->sequence++;
 
     while (!g_stop)
     {
+        if (ping->count > 0 && ping->stats.ntransmitted >= ping->count)
+            break;
+
         struct timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
 
-        if (ping->deadline > 0 && timespec_ge(&now, &deadline_ts))
-            break;
-
-        if (timespec_ge(&now, &next_send))
         {
-            clock_gettime(CLOCK_MONOTONIC, &next_send);
-            timespec_add_sec(&next_send, 1);
-            send_echo(ping);
-            ping->sequence++;
-            continue;
+            struct timespec next_expected = start;
+            timespec_add_sec(&next_expected, ping->stats.ntransmitted);
+            if (timespec_ge(&now, &next_expected))
+            {
+                send_echo(ping);
+                ping->sequence++;
+                continue;
+            }
+        }
+
+        if (ping->deadline > 0 && timespec_ge(&now, &deadline_ts))
+        {
+            deadline_hit = 1;
+            break;
         }
 
         fromlen = sizeof(from);
@@ -115,5 +123,6 @@ void event_loop(t_ping *ping)
         }
     }
 
-    drain_socket(ping);
+    if (!deadline_hit)
+        drain_socket(ping);
 }

@@ -1,0 +1,5 @@
+docs/
+.git/
+*.o
+*.d
+ft_ping

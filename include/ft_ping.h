@@ -44,6 +44,7 @@ typedef struct s_ping {
     int             waittimeout;
     int             deadline;
     int             ttl;
+    unsigned int    count;
     char            *hostname;
     char            ip_str[INET_ADDRSTRLEN];
     struct sockaddr_in dest_addr;

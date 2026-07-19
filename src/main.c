@@ -2,13 +2,14 @@
 
 void print_help(void)
 {
-    printf("Usage: ft_ping [-v] [-?] [-n] [-r] [-W timeout] [-w deadline]\n"
+    printf("Usage: ft_ping [-v] [-?] [-n] [-r] [-c count] [-W timeout] [-w deadline]\n"
            "              [--ttl N] <hostname or IP>\n"
            "\n"
            "Options:\n"
            "  -v        verbose output\n"
            "  -n        numeric output only\n"
            "  -r        bypass the routing table\n"
+           "  -c count  stop after N packets\n"
            "  -W sec    time to wait for a response\n"
            "  -w sec    stop after N seconds\n"
            "  --ttl N   set IP Time To Live\n"
@@ -29,7 +30,10 @@ int main(int argc, char **argv)
     int status = 2;
 
     if (argc < 2)
-        RETURN_ERR(1, "error: no arguments. Use -? for usage.\n");
+    {
+        fprintf(stderr, "ft_ping: missing host operand\n");
+        RETURN_ERR(2, "Try 'ft_ping --help' or 'ft_ping --usage' for more information.\n");
+    }
     memset(&ping, 0, sizeof(ping));
     ping.sockfd = -1;
     ping.verbose = false;
@@ -38,6 +42,7 @@ int main(int argc, char **argv)
     ping.waittimeout = 0;
     ping.deadline = 0;
     ping.ttl = 0;
+    ping.count = 0;
     ping.pid = getpid() & 0xFFFF;
     ping.sequence = 0;
     stats_init(&ping.stats);
@@ -54,10 +59,13 @@ int main(int argc, char **argv)
     }
 
     opterr = 0;
-    while ((opt = getopt(argc, argv, "vnrW:w:")) != -1)
+    while ((opt = getopt(argc, argv, "c:vnrW:w:")) != -1)
     {
         switch (opt)
         {
+        case 'c':
+            ping.count = atoi(optarg);
+            break;
         case 'v':
             ping.verbose = true;
             break;
@@ -87,7 +95,7 @@ int main(int argc, char **argv)
 
     if (optind >= argc)
         RETURN_ERR(2, "ft_ping: missing host operand\n"
-                      "Usage: ft_ping [-v] [-?] [-n] [-r] [-W timeout] [-w deadline] [--ttl N] <hostname or IP>\n");
+                      "Usage: ft_ping [-v] [-?] [-n] [-r] [-c count] [-W timeout] [-w deadline] [--ttl N] <hostname or IP>\n");
 
     if (optind != argc - 1)
         RETURN_ERR(2, "ft_ping: too many arguments\n");

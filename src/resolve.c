@@ -13,8 +13,7 @@ int resolve_destination(t_ping *ping)
 
     err = getaddrinfo(ping->hostname, NULL, &hints, &result);
     if (err != 0)
-        RETURN_ERR(-1, "ft_ping: %s: %s\n",
-                   ping->hostname, gai_strerror(err));
+        RETURN_ERR(-1, "ft_ping: unknown host\n");
 
     for (rp = result; rp != NULL; rp = rp->ai_next)
     {
