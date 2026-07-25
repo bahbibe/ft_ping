@@ -52,7 +52,7 @@ void print_stats(t_ping *ping)
             variance = 0;
         double mdev = sqrt(variance);
 
-        printf("round-trip min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n",
+        printf("round-trip min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n",
                ping->stats.rtt_min, avg,
                ping->stats.rtt_max, mdev);
     }
