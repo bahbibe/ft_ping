@@ -4,6 +4,7 @@ CFLAGS = -Wall -Werror -Wextra -g3 -D_GNU_SOURCE -Iinclude -MMD
 LDFLAGS = -lm
 
 SRC = src/main.c \
+      src/args.c \
       src/checksum.c \
       src/resolve.c \
       src/packet.c \

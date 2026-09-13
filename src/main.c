@@ -1,131 +1,56 @@
 #include "ft_ping.h"
 
-void print_help(void)
+static void set_socket_options(t_ping *ping)
 {
-    printf("Usage: ft_ping [-v] [-?] [-n] [-r] [-c count] [-W timeout] [-w deadline]\n"
-           "              [--ttl N] <hostname or IP>\n"
-           "\n"
-           "Options:\n"
-           "  -v        verbose output\n"
-           "  -n        numeric output only\n"
-           "  -r        bypass the routing table\n"
-           "  -c count  stop after N packets\n"
-           "  -W sec    time to wait for a response\n"
-           "  -w sec    stop after N seconds\n"
-           "  --ttl N   set IP Time To Live\n"
-           "  -?        display this help and exit\n");
-}
+    int one = 1;
 
-static void print_startup(t_ping *ping)
-{
-    printf("PING %s (%s): %d data bytes\n",
-           ping->numeric ? ping->ip_str : ping->hostname,
-           ping->ip_str, DATA_SIZE);
+    setsockopt(ping->sockfd, SOL_SOCKET, SO_BROADCAST, &one, sizeof(one));
+    if (ping->dontroute)
+        setsockopt(ping->sockfd, SOL_SOCKET, SO_DONTROUTE, &one, sizeof(one));
+    if (ping->ttl > 0
+        && setsockopt(ping->sockfd, IPPROTO_IP, IP_TTL,
+                      &ping->ttl, sizeof(ping->ttl)) < 0)
+        fprintf(stderr, "ft_ping: setsockopt(IP_TTL): %s\n", strerror(errno));
 }
 
 int main(int argc, char **argv)
 {
     t_ping ping;
-    int opt;
-    int status = 2;
+    int status;
 
-    if (argc < 2)
-    {
-        fprintf(stderr, "ft_ping: missing host operand\n");
-        RETURN_ERR(2, "Try 'ft_ping --help' or 'ft_ping --usage' for more information.\n");
-    }
     memset(&ping, 0, sizeof(ping));
     ping.sockfd = -1;
-    ping.verbose = false;
-    ping.numeric = false;
-    ping.dontroute = false;
-    ping.waittimeout = 0;
-    ping.deadline = 0;
-    ping.ttl = 0;
-    ping.count = 0;
+    ping.linger = DEFAULT_LINGER;
     ping.pid = getpid() & 0xFFFF;
-    ping.sequence = 0;
-    stats_init(&ping.stats);
+    ping.stats.rtt_min = INFINITY;
+    /* Line buffered even when piped, so stdout and stderr stay in order. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
 
-    for (int i = 1; i < argc; i++)
-    {
-        if (strcmp(argv[i], "--ttl") == 0 && i + 1 < argc)
-        {
-            ping.ttl = atoi(argv[i + 1]);
-            memmove(&argv[i], &argv[i + 2], (argc - i - 1) * sizeof(char *));
-            argc -= 2;
-            break;
-        }
-    }
+    status = parse_args(&ping, argc, argv);
+    if (status >= 0)
+        return status;
 
-    opterr = 0;
-    while ((opt = getopt(argc, argv, "c:vnrW:w:")) != -1)
-    {
-        switch (opt)
-        {
-        case 'c':
-            ping.count = atoi(optarg);
-            break;
-        case 'v':
-            ping.verbose = true;
-            break;
-        case 'n':
-            ping.numeric = true;
-            break;
-        case 'r':
-            ping.dontroute = true;
-            break;
-        case 'W':
-            ping.waittimeout = atoi(optarg);
-            break;
-        case 'w':
-            ping.deadline = atoi(optarg);
-            break;
-        case '?':
-            if (optopt == '?')
-            {
-                print_help();
-                return 0;
-            }
-            return 2;
-        default:
-            return 2;
-        }
-    }
-
-    if (optind >= argc)
-        RETURN_ERR(2, "ft_ping: missing host operand\n"
-                      "Usage: ft_ping [-v] [-?] [-n] [-r] [-c count] [-W timeout] [-w deadline] [--ttl N] <hostname or IP>\n");
-
-    if (optind != argc - 1)
-        RETURN_ERR(2, "ft_ping: too many arguments\n");
-
-    ping.hostname = argv[optind];
-
-    if (resolve_destination(&ping) != 0)
-        goto cleanup;
-
+    status = EXIT_FAILURE;
+    /* Socket first: the privilege check comes before DNS. */
     ping.sockfd = create_raw_socket();
     if (ping.sockfd < 0)
         goto cleanup;
+    set_socket_options(&ping);
 
-    if (ping.dontroute)
-    {
-        int opt = 1;
-        setsockopt(ping.sockfd, SOL_SOCKET, SO_DONTROUTE,
-                   &opt, sizeof(opt));
-    }
-    if (ping.ttl > 0)
-        setsockopt(ping.sockfd, IPPROTO_IP, IP_TTL,
-                   &ping.ttl, sizeof(ping.ttl));
-
+    if (resolve_destination(&ping) != 0)
+        goto cleanup;
     if (setup_signal_handler() != 0)
         goto cleanup;
 
-    print_startup(&ping);
-    event_loop(&ping);
+    printf("PING %s (%s): %d data bytes", ping.hostname, ping.ip_str, DATA_SIZE);
+    if (ping.verbose)
+        printf(", id 0x%04x = %u", ping.pid, ping.pid);
+    printf("\n");
+
+    if (event_loop(&ping) != 0)
+        goto cleanup;
     print_stats(&ping);
-    status = 0;
+    status = ping.stats.nreceived == 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 
 cleanup:
     if (ping.sockfd >= 0)

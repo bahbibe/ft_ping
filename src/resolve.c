@@ -2,34 +2,24 @@
 
 int resolve_destination(t_ping *ping)
 {
-    struct addrinfo hints, *result, *rp;
-    int err;
-    int status = -1;
+    struct addrinfo hints, *result;
+    const char *name;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_RAW;
-    hints.ai_protocol = IPPROTO_ICMP;
+    hints.ai_flags = AI_CANONNAME;
 
-    err = getaddrinfo(ping->hostname, NULL, &hints, &result);
-    if (err != 0)
+    if (getaddrinfo(ping->target, NULL, &hints, &result) != 0)
         RETURN_ERR(-1, "ft_ping: unknown host\n");
 
-    for (rp = result; rp != NULL; rp = rp->ai_next)
-    {
-        if (rp->ai_family == AF_INET)
-        {
-            ping->dest_addr = *(struct sockaddr_in *)rp->ai_addr;
-            inet_ntop(AF_INET, &ping->dest_addr.sin_addr,
-                      ping->ip_str, sizeof(ping->ip_str));
-            status = 0;
-            goto cleanup;
-        }
-    }
+    ping->dest_addr = *(struct sockaddr_in *)result->ai_addr;
+    inet_ntop(AF_INET, &ping->dest_addr.sin_addr,
+              ping->ip_str, sizeof(ping->ip_str));
 
-    fprintf(stderr, "ft_ping: %s: No IPv4 address found\n", ping->hostname);
+    /* The header shows the canonical name (CNAME target), not argv. */
+    name = result->ai_canonname ? result->ai_canonname : ping->target;
+    snprintf(ping->hostname, sizeof(ping->hostname), "%s", name);
 
-cleanup:
     freeaddrinfo(result);
-    return status;
+    return 0;
 }

@@ -1,59 +1,44 @@
 #include "ft_ping.h"
 
-void stats_init(t_ping_stats *stats)
-{
-    memset(stats, 0, sizeof(*stats));
-    stats->rtt_min = INFINITY;
-}
-
 void stats_update(t_ping_stats *stats, double rtt_ms)
 {
-    if (stats->rtt_count == 0)
-    {
+    if (rtt_ms < stats->rtt_min)
         stats->rtt_min = rtt_ms;
+    if (rtt_ms > stats->rtt_max)
         stats->rtt_max = rtt_ms;
-    }
-    else
-    {
-        if (rtt_ms < stats->rtt_min)
-            stats->rtt_min = rtt_ms;
-        if (rtt_ms > stats->rtt_max)
-            stats->rtt_max = rtt_ms;
-    }
     stats->rtt_sum += rtt_ms;
     stats->rtt_sum_sq += rtt_ms * rtt_ms;
-    stats->rtt_count++;
 }
 
+/* Format matches the reference ping statistics block. */
 void print_stats(t_ping *ping)
 {
-    unsigned int sent = ping->stats.ntransmitted;
-    unsigned int received = ping->stats.nreceived;
-    unsigned int loss;
+    t_ping_stats *s = &ping->stats;
 
-    if (sent == 0)
-        loss = 0;
-    else
-        loss = ((sent - received) * 100) / sent;
-
-    printf("--- %s ping statistics ---\n",
-           ping->numeric ? ping->ip_str : ping->hostname);
-    printf("%u packets transmitted, %u packets received, %u%% packet loss",
-           sent, received, loss);
-    if (ping->stats.nerrors > 0 && ping->verbose)
-        printf(", +%u errors", ping->stats.nerrors);
+    fflush(stdout);
+    printf("--- %s ping statistics ---\n", ping->hostname);
+    printf("%u packets transmitted, ", s->ntransmitted);
+    printf("%u packets received, ", s->nreceived);
+    if (s->nrepeats)
+        printf("+%u duplicates, ", s->nrepeats);
+    if (s->ntransmitted)
+    {
+        if (s->nreceived > s->ntransmitted)
+            printf("-- somebody is printing forged packets!");
+        else
+            printf("%u%% packet loss",
+                   (s->ntransmitted - s->nreceived) * 100 / s->ntransmitted);
+    }
     printf("\n");
 
-    if (ping->stats.rtt_count > 0)
+    if (s->nreceived)
     {
-        double avg = ping->stats.rtt_sum / ping->stats.rtt_count;
-        double variance = (ping->stats.rtt_sum_sq / ping->stats.rtt_count) - (avg * avg);
-        if (variance < 0)
-            variance = 0;
-        double mdev = sqrt(variance);
+        double total = s->nreceived + s->nrepeats;
+        double avg = s->rtt_sum / total;
+        double variance = s->rtt_sum_sq / total - avg * avg;
 
         printf("round-trip min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n",
-               ping->stats.rtt_min, avg,
-               ping->stats.rtt_max, mdev);
+               s->rtt_min, avg, s->rtt_max,
+               variance > 0 ? sqrt(variance) : 0.0);
     }
 }

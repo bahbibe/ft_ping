@@ -11,8 +11,13 @@ uint16_t icmp_checksum(const void *data, size_t len)
         len -= 2;
     }
 
+    /* Odd byte is padded as (byte, 0x00): memcpy keeps that host-order safe. */
     if (len == 1)
-        sum += (*(const uint8_t *)words) << 8;
+    {
+        uint16_t last = 0;
+        memcpy(&last, words, 1);
+        sum += last;
+    }
 
     while (sum >> 16)
         sum = (sum & 0xFFFF) + (sum >> 16);
