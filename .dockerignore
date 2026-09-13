@@ -1,5 +1,6 @@
 docs/
 .git/
-*.o
-*.d
+**/*.o
+**/*.d
 ft_ping
+*.pdf

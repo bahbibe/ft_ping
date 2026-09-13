@@ -1,24 +1,34 @@
 FROM debian:bookworm-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc make libc-dev wget ca-certificates \
+    gcc make libc-dev wget ca-certificates xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Reference named by the subject: inetutils-2.0
 WORKDIR /build
 RUN wget -q https://ftp.gnu.org/gnu/inetutils/inetutils-2.0.tar.gz && \
     tar xzf inetutils-2.0.tar.gz
 WORKDIR /build/inetutils-2.0
 RUN ./configure --enable-ping
-RUN make -C lib && make -C libinetutils && make -C libicmp && make -C ping && make -C ping install
+RUN make -C lib && make -C libinetutils && make -C libicmp && make -C ping
 
+# Second reference: inetutils-2.6 (what Debian 13 trixie ships)
 WORKDIR /build
+RUN wget -q https://ftp.gnu.org/gnu/inetutils/inetutils-2.6.tar.xz && \
+    tar xJf inetutils-2.6.tar.xz
+WORKDIR /build/inetutils-2.6
+RUN ./configure --enable-ping
+RUN make -C lib && make -C libinetutils && make -C libicmp && make -C ping
+
+WORKDIR /build/ft_ping
 COPY . .
 RUN make
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends netbase \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /usr/local/bin/ping /usr/bin/ping
-COPY --from=builder /build/ft_ping /usr/local/bin/ft_ping
+COPY --from=builder /build/inetutils-2.0/ping/ping /usr/bin/ping
+COPY --from=builder /build/inetutils-2.6/ping/ping /usr/bin/ping-2.6
+COPY --from=builder /build/ft_ping/ft_ping /usr/local/bin/ft_ping
 COPY test-diff.sh /test-diff.sh
 CMD ["/test-diff.sh"]

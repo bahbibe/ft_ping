@@ -32,5 +32,6 @@ re: fclean all
 test-docker: all
 	docker build -t ft_ping-test -f Dockerfile.test .
 	docker run --rm --cap-add=NET_RAW ft_ping-test
+	-docker run --rm --cap-add=NET_RAW -e REF_PING=/usr/bin/ping-2.6 ft_ping-test
 
 .PHONY: all clean fclean re test-docker
