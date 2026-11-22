@@ -54,9 +54,6 @@ dkms.conf
 # debug information files
 *.dwo
 
-# Learning materials (not pushed to repo)
-docs/
-
 # Build artifacts
 ft_ping
 *.pdf
